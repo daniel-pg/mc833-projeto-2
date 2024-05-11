@@ -23,6 +23,7 @@ all: build_folder server client-linux
 build_folder:
 	mkdir -p build
 	cp server/MusicDatabase.db build/MusicDatabase.db
+	cp -r server/music build
 
 server: server.o
 	$(CC) -o build/server build/server.o $(LD_FLAGS)
