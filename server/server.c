@@ -11,6 +11,7 @@
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
+
 typedef struct {
     char title[100];
     char artist[100];
@@ -25,6 +26,62 @@ struct ResponseBuffer {
     size_t bufferSize; // Tamanho total do buffer
     size_t length;     // Tamanho atual dos dados no buffer
 };
+
+// Função para obter o caminho do arquivo a partir do ID
+int get_file_path(const char* id, char* file_path) {
+    sqlite3 *db;
+    sqlite3_stmt *res;
+    int error = 0;
+
+    int rc = sqlite3_open("MusicDatabase.db", &db);
+
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return -1;
+    }
+
+    char sql[128];
+    sprintf(sql, "SELECT file_path FROM music WHERE id = %s;", id);
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);
+
+    if (rc == SQLITE_OK) {
+        if (sqlite3_step(res) == SQLITE_ROW) {
+            strcpy(file_path, (char*)sqlite3_column_text(res, 0));
+        } else {
+            fprintf(stderr, "No match found\n");
+            error = -1;
+        }
+    } else {
+        fprintf(stderr, "Failed to execute statement: %s\n", sqlite3_errmsg(db));
+        error = -1;
+    }
+
+    sqlite3_finalize(res);
+    sqlite3_close(db);
+
+    return error;
+}
+
+// Função para enviar o arquivo
+void send_file(const char* file_path, int udp_fd, struct sockaddr_in from, socklen_t from_len) {
+    FILE *file = fopen(file_path, "rb");
+    if (file == NULL) {
+        perror("File open failed");
+        return;
+    }
+
+    char buffer[BUFFER_SIZE];
+    int bytes_read;
+
+    while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
+        sendto(udp_fd, buffer, bytes_read, 0, (struct sockaddr *)&from, from_len);
+    }
+
+    fclose(file);
+    printf("File sent successfully\n");
+}
 
 static int callback(void* data, int argc, char** argv, char** azColName) {
     struct ResponseBuffer* resp = (struct ResponseBuffer*)data;
@@ -278,58 +335,126 @@ void handleClient(int sock) {
 }
 
 int main() {
-    int server_fd, client_sock, c;
-    struct sockaddr_in server, client;
+    int server_fd, client_sock, c, udp_fd;
+    struct sockaddr_in server, client, server_udp;
 
-    // Criação do socket do servidor
+    // Criação do socket TCP
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
-        perror("Unable to create socket");
+        perror("Could not create socket");
+        return 1;
     }
-    puts("Socket created");
+    puts("TCP Socket created");
 
-    // Preparação da estrutura sockaddr_in
+    // Criação do socket UDP
+    udp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (udp_fd == -1) {
+        perror("Could not create UDP socket");
+        return 1;
+    }
+    puts("UDP Socket created");
+
+    // Preparação da estrutura sockaddr_in para TCP
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = INADDR_ANY;
     server.sin_port = htons(PORT);
 
-    // Bind
+    // Preparação da estrutura sockaddr_in para UDP
+    server_udp = server;
+
+    // Bind TCP
     if(bind(server_fd, (struct sockaddr *)&server, sizeof(server)) < 0) {
-        perror("bind failed. Error");
+        perror("bind failed. TCP Error");
         return 1;
     }
-    puts("Bind done");
+    puts("Bind done for TCP");
 
-    // Listen
+    // Bind UDP
+    if(bind(udp_fd, (struct sockaddr *)&server_udp, sizeof(server_udp)) < 0) {
+        perror("bind failed. UDP Error");
+        return 1;
+    }
+    puts("Bind done for UDP");
+
+    // Listen para TCP
     listen(server_fd, 3);
-
-    // Aceitar conexões entrantes
     puts("Waiting for connections...");
-    c = sizeof(struct sockaddr_in);
-    while ((client_sock = accept(server_fd, (struct sockaddr *)&client, (socklen_t*)&c))) {
-        puts("Connection accepted");
 
-        pid_t pid = fork();
+    fd_set readfds;
+    int max_sd;
 
-        if (pid < 0) {
-            perror("fork failed");
-            return 1;
+    while (1) {
+        FD_ZERO(&readfds);
+        FD_SET(server_fd, &readfds);
+        FD_SET(udp_fd, &readfds);
+        max_sd = (server_fd > udp_fd) ? server_fd : udp_fd;
+
+        // Espera por uma atividade em um dos sockets, timeout é NULL, então espera indefinidamente
+        int activity = select(max_sd + 1, &readfds, NULL, NULL, NULL);
+
+        if (activity < 0) {
+            perror("select error");
+            continue;
         }
 
-        if (pid == 0) {
-            // Este é o processo filho
-            close(server_fd);
-            handleClient(client_sock);
-            exit(0);
-        } else {
-            // Este é o processo pai
-            close(client_sock);
-        }
-    }
+        // Checa se é atividade no socket TCP para aceitar uma nova conexão
+        if (FD_ISSET(server_fd, &readfds)) {
+            client_sock = accept(server_fd, (struct sockaddr *)&client, (socklen_t*)&c);
+            if (client_sock < 0) {
+                perror("accept failed");
+                return 1;
+            }
+            puts("Connection accepted");
 
-    if (client_sock < 0) {
-        perror("accept failed");
-        return 1;
+            pid_t pid = fork();
+            if (pid < 0) {
+                perror("fork failed");
+                return 1;
+            }
+            if (pid == 0) {
+                close(server_fd);
+                handleClient(client_sock);
+                exit(0);
+            } else {
+                close(client_sock);
+            }
+        }
+
+        // Checa se é atividade no socket UDP para receber dados
+        if (FD_ISSET(udp_fd, &readfds)) {
+            char buffer[1024];
+            struct sockaddr_in from;
+            socklen_t from_len = sizeof(from);
+            ssize_t bytes_received = recvfrom(udp_fd, buffer, sizeof(buffer), 0, (struct sockaddr *)&from, &from_len);
+            if (bytes_received < 0) {
+                perror("UDP recvfrom error");
+            } else {
+                buffer[bytes_received] = '\0';  // Certifica que a string é terminada corretamente
+
+                char command[10];
+                char id[512];
+                char file_path[1024];
+
+                // Analisa o buffer para extrair o comando e o id
+                if (sscanf(buffer, "%s %s", command, id) == 2) {
+                    if (strcmp(command, "download") == 0) {
+                        if (strcmp(command, "download") == 0) {
+                            if (get_file_path(id, file_path) == 0) {
+                                send_file(file_path, udp_fd, from, from_len);
+                            } else {
+                                char *error_msg = "File not found";
+                                sendto(udp_fd, error_msg, strlen(error_msg), 0, (struct sockaddr *)&from, from_len);
+                            }
+                        }
+                    }
+                } else {
+                    // Resposta padrão caso o parsing falhe
+                    char *errorMsg = "Invalid command format";
+                    sendto(udp_fd, errorMsg, strlen(errorMsg), 0, (struct sockaddr *)&from, from_len);
+                    printf("Error: %s\n", errorMsg);
+                }
+            }
+        }
     }
 
     return 0;
