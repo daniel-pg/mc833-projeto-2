@@ -7,9 +7,9 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-#define TCP_PORT "8080"
+#define TCP_PORT 8080
 #define UDP_PORT 9090
-#define SERVER_IP "127.0.0.1"  // Endereço IP do servidor
+#define SERVER_IP "172.30.208.101"  // Endereço IP do servidor
 
 void downloadMusicUDP(const char *server_ip, int server_port, const char *music_id);
 
@@ -18,7 +18,6 @@ int main() {
     SOCKET sock = INVALID_SOCKET;
     struct sockaddr_in server;
     char message[1000], server_reply[2000];
-    char input[1024];
 
     // Inicializa o Winsock
     if (WSAStartup(MAKEWORD(2,2), &wsaData) != 0) {
@@ -34,7 +33,7 @@ int main() {
 
     server.sin_addr.s_addr = inet_addr(SERVER_IP);
     server.sin_family = AF_INET;
-    server.sin_port = htons(atoi(TCP_PORT));
+    server.sin_port = htons(TCP_PORT);
 
     // Conexão ao servidor remoto
     if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0) {
@@ -47,18 +46,18 @@ int main() {
     // Loop de comunicação TCP
     do {
         printf("Enter command (or type 'udp_download' to download music via UDP): ");
-        fgets(input, sizeof(input), stdin);  // Lendo comando do usuário
+        fgets(message, sizeof(message), stdin);  // Lendo comando do usuário
 
         // Remove newline character, se existir
-        input[strcspn(input, "\n")] = 0;
+        message[strcspn(message, "\n")] = 0;
 
         // Verifica se o usuário digitou "quit"
-        if (strcmp(input, "quit") == 0) {
+        if (strcmp(message, "quit") == 0) {
             break;
         }
 
         // Se o usuário digitar "udp_download", executa a operação de download via UDP
-        if (strcmp(input, "udp_download") == 0) {
+        if (strcmp(message, "udp_download") == 0) {
             printf("Enter music ID for UDP download: ");
             char music_id[100];
             fgets(music_id, sizeof(music_id), stdin);
@@ -68,7 +67,7 @@ int main() {
         }
 
         // Envia a mensagem TCP
-        if (send(sock, input, strlen(input), 0) < 0) {
+        if (send(sock, message, strlen(message), 0) < 0) {
             puts("Send failed");
             break;
         }
