@@ -50,20 +50,17 @@ int main() {
             break;
         }
 
-        if (strncmp(message, "download ", 9) == 0) {
+        //se a mensagem enviada tiver 'download ' altera a conexão para UDP
+        if (strncmp(message, "download ", 9) == 0) { 
             closesocket(sock); // Fecha o socket atual
-            if (!useUDP) {
-                // Altera para UDP
-                sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-                useUDP = 1;
-                puts("Switched to UDP\n");
-            }
+            sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); //conecta UDP e muda a flag
+            useUDP = 1;
+            puts("Switched to UDP\n");
         }
-        else {
-            // Altera para TCP
+        else { //se não, altera para TCP
             closesocket(sock); // Fecha o socket atual
             sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-            connect(sock, (struct sockaddr *)&server, sizeof(server)); // Reconecta o TCP
+            connect(sock, (struct sockaddr *)&server, sizeof(server)); //conecta TCP e muda a flag
             useUDP = 0;
             puts("Switched to TCP\n");
         }
@@ -71,13 +68,14 @@ int main() {
         if (useUDP) {
             sendto(sock, message, strlen(message), 0, (struct sockaddr *)&server, slen);
 
-             FILE *file = fopen("received_file.mp3", "wb");
+            FILE *file = fopen("received_file.mp3", "wb");
             if (file == NULL) {
                 perror("Failed to open file");
                 return 1;
             }
 
-            while (1) {
+            int end_of_file_received = 0;
+            while (!end_of_file_received) {
                 memset(server_reply, 0, sizeof(server_reply));
                 int bytes_received = recvfrom(sock, server_reply, sizeof(server_reply) - 1, 0, (struct sockaddr *)&server, &slen);
                 if (bytes_received < 0) {
@@ -88,23 +86,21 @@ int main() {
                 // Verificar se é uma mensagem de fim de arquivo
                 if (bytes_received == 0 || strcmp(server_reply, "END OF FILE") == 0) {
                     puts("File received successfully.");
-                    break;
+                    end_of_file_received = 1;
+                    continue;
                 }
 
                 fwrite(server_reply, 1, bytes_received, file);
             }    
 
             fclose(file);
-            memset(server_reply, 0, sizeof(server_reply));
-            recvfrom(sock, server_reply, sizeof(server_reply) - 1, 0, (struct sockaddr *)&server, &slen);
         } else {
             send(sock, message, strlen(message), 0);
             memset(server_reply, 0, sizeof(server_reply));
             recv(sock, server_reply, sizeof(server_reply) - 1, 0);
+            puts("Server reply:");
+            puts(server_reply);
         }
-
-        puts("Server reply:");
-        puts(server_reply);
     } while (1);
 
     closesocket(sock);
