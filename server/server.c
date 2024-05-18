@@ -325,7 +325,7 @@ void handleClient(int sock) {
     }
 
     if(read_size == 0) {
-        puts("Client disconnected.");
+        puts("TCP Client disconnected.");
         fflush(stdout);
     } else if(read_size == -1) {
         perror("recv falhou");
@@ -434,13 +434,15 @@ int main() {
                 char command[10];
                 char id[512];
                 char file_path[1024];
-
+                char *error_msg = "File not found";
+                sendto(udp_fd, error_msg, strlen(error_msg), 0, (struct sockaddr *)&from, from_len);
                 // Analisa o buffer para extrair o comando e o id
                 if (sscanf(buffer, "%s %s", command, id) == 2) {
                     if (strcmp(command, "download") == 0) {
                         if (strcmp(command, "download") == 0) {
                             if (get_file_path(id, file_path) == 0) {
                                 send_file(file_path, udp_fd, from, from_len);
+                                sendto(udp_fd, "END OF FILE", strlen("END OF FILE"), 0, (struct sockaddr *)&from, from_len);
                             } else {
                                 char *error_msg = "File not found";
                                 sendto(udp_fd, error_msg, strlen(error_msg), 0, (struct sockaddr *)&from, from_len);
