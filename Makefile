@@ -13,30 +13,33 @@ CC_FLAGS=\
 -Werror=vla     \
 -Wextra
 
-LD_FLAGS=\
+SERVER_LD_FLAGS=\
 -lsqlite3
 
+CLIENT_LD_FLAGS :=
+
+BUILD_DIR = build
 
 .PHONY: all
-all: build_folder server client-linux
+all: setup server client-linux
 
-build_folder:
-	mkdir -p build
-	cp server/MusicDatabase.db build/MusicDatabase.db
-	cp -r server/music build
+setup:
+	mkdir -p $(BUILD_DIR)
+	cp server/MusicDatabase.db $(BUILD_DIR)/MusicDatabase.db
+	cp -r server/music $(BUILD_DIR)
 
 server: server.o
-	$(CC) -o build/server build/server.o $(LD_FLAGS)
+	$(CC) -o $(BUILD_DIR)/server $(BUILD_DIR)/server.o $(SERVER_LD_FLAGS)
 
 client-linux: client-linux.o
-	$(CC) -o build/client-linux build/client-linux.o $(LD_FLAGS)
+	$(CC) -o $(BUILD_DIR)/client-linux $(BUILD_DIR)/client-linux.o $(CLIENT_LD_FLAGS)
 
 server.o: server/server.c
-	$(CC) -o build/server.o server/server.c $(CC_FLAGS)
+	$(CC) -o $(BUILD_DIR)/server.o server/server.c $(CC_FLAGS)
 
 client-linux.o: client/client-linux.c
-	$(CC) -o build/client-linux.o client/client-linux.c $(CC_FLAGS)
+	$(CC) -o $(BUILD_DIR)/client-linux.o client/client-linux.c $(CC_FLAGS)
 
 .PHONY: clean
 clean:
-	rm -rf ./build
+	rm -rf ./$(BUILD_DIR)
