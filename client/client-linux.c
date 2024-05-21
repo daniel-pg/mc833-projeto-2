@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define DEFAULT_PORT "8080"
 
@@ -65,42 +66,88 @@ static void _send_command_mainloop(int sockfd_tcp, int sockfd_udp, struct addrin
 
     // Connect to TCP socket
     if (-1 == connect(sockfd_tcp, p_tcp->ai_addr, p_tcp->ai_addrlen)) {
-        perror("Connection error");
+        perror("TCP connection error");
         exit(1);
     }
-    puts("Client connected succesfully!\n");
+    puts("Client connected succesfully to TCP socket!\n");
+
+    // Connect to UDP socket
+    if (-1 == connect(sockfd_udp, p_udp->ai_addr, p_udp->ai_addrlen)) {
+        perror("UDP connection error");
+        exit(1);
+    }
+    puts("Client connected succesfully to UDP socket!\n");
 
     while (true) {
-        printf("Enter message: ");
+        printf("Enter command: ");
         if (NULL == fgets(message, sizeof(message), stdin)) {
-            break;
+            puts("EOF");
+            return;
         }
         message[strcspn(message, "\n")] = 0;  // Strip newline from input
 
-        if ((0 == strcmp(message, "q")) || (0 == strcmp(message, "quit"))) {
-            break;
+        if ((0 == strcmp(message, "q"))
+            || (0 == strcmp(message, "quit"))
+            || (0 == strcmp(message, "exit"))
+        ) {
+            puts("Exiting...");
+            return;
         }
 
-        // Send message
-        if (-1 == send(sockfd_tcp, message, strlen(message), 0)) {
-            perror("Send failed");
-            break;
-        }
+        if (0 == strcmp(message, "download")) {
+            // Send download command using UDP
+            if (-1 == send(sockfd_udp, message, strlen(message), 0)) {
+                perror("Send failed");
+                break;
+            }
 
-        // Clear reply buffer
-        memset(server_reply, 0, sizeof(server_reply));
+            FILE *file = fopen("received_file.mp3", "wb");
+            if (file == NULL) {
+                perror("Failed to open file");
+                break;
+            }
 
-        int recv_size = recv(sockfd_tcp, server_reply, sizeof(server_reply) - 1, 0);
-        if (recv_size == -1) {
-            perror("recv failed");
-            break;
-        } else if (recv_size == 0) {
-            puts("Server closed connection");
-            break;
+            int end_of_file_received = 0;
+            while (!end_of_file_received) {
+                memset(server_reply, 0, sizeof(server_reply));
+                int bytes_received = recvfrom(sockfd_udp, server_reply, sizeof(server_reply) - 1, 0, p_udp->ai_addr, &p_udp->ai_addrlen);
+                if (bytes_received < 0) {
+                    perror("recvfrom failed");
+                    break;
+                }
+
+                // Verificar se é uma mensagem de fim de arquivo
+                if (bytes_received == 0 || strcmp(server_reply, "END OF FILE") == 0) {
+                    puts("File received successfully.");
+                    end_of_file_received = 1;
+                    continue;
+                }
+
+                fwrite(server_reply, 1, bytes_received, file);
+            }
+
         } else {
-            server_reply[recv_size] = '\0';
-            puts("Server reply:");
-            puts(server_reply);
+            // Send message
+            if (-1 == send(sockfd_tcp, message, strlen(message), 0)) {
+                perror("Send failed");
+                break;
+            }
+
+            // Clear reply buffer
+            memset(server_reply, 0, sizeof(server_reply));
+
+            int recv_size = recv(sockfd_tcp, server_reply, sizeof(server_reply) - 1, 0);
+            if (recv_size == -1) {
+                perror("recv failed");
+                break;
+            } else if (recv_size == 0) {
+                puts("Server closed connection");
+                break;
+            } else {
+                server_reply[recv_size] = '\0';
+                puts("Server reply:");
+                puts(server_reply);
+            }
         }
     }
 }
@@ -138,6 +185,9 @@ int main(int argc, char *argv[]) {
     }
 
     _send_command_mainloop(sockfd_tcp, sockfd_udp, p_tcp, p_udp);
+
+    close(sockfd_tcp);
+    close(sockfd_udp);
 
     freeaddrinfo(srv_info_tcp);
     freeaddrinfo(srv_info_udp);
