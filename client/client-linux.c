@@ -45,6 +45,20 @@ static void _get_server_addrinfo(
     }
 }
 
+static int _create_socket(struct addrinfo *srv_info, struct addrinfo **po) {
+    int sockfd = -1;
+
+    struct addrinfo *p;
+    for(p = srv_info; p != NULL; p = p->ai_next) {
+        if (-1 != (sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol))) {
+            break;
+        }
+    }
+
+    *po = p;
+    return sockfd;
+}
+
 static void _send_command_mainloop(int sockfd_tcp, int sockfd_udp, struct addrinfo *p_tcp, struct addrinfo *p_udp) {
     char message[1024];
     char server_reply[2048];
@@ -106,27 +120,18 @@ int main(int argc, char *argv[]) {
     struct addrinfo *srv_info_tcp, *srv_info_udp;
     _get_server_addrinfo(srv_hostname, srv_port, &srv_info_tcp, &srv_info_udp);
 
-    // Create TCP socket
     struct addrinfo *p_tcp, *p_udp;
     int sockfd_tcp, sockfd_udp;
-    for(p_tcp = srv_info_tcp; p_tcp != NULL; p_tcp = p_tcp->ai_next) {
-        if (-1 != (sockfd_tcp = socket(p_tcp->ai_family, p_tcp->ai_socktype, p_tcp->ai_protocol))) {
-            break;
-        }
-    }
 
+    // Create TCP socket
+    sockfd_tcp = _create_socket(srv_info_tcp, &p_tcp);
     if (sockfd_tcp == -1) {
         perror("Failed to create TCP socket");
         exit(1);
     }
 
     // Create UDP socket
-    for(p_udp = srv_info_udp; p_udp != NULL; p_udp = p_udp->ai_next) {
-        if (-1 != (sockfd_udp = socket(p_udp->ai_family, p_udp->ai_socktype, p_udp->ai_protocol))) {
-            break;
-        }
-    }
-
+    sockfd_udp = _create_socket(srv_info_udp, &p_udp);
     if (sockfd_udp == -1) {
         perror("Failed to create UDP socket");
         exit(1);
