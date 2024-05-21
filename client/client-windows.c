@@ -51,7 +51,7 @@ int main() {
         }
 
         //se a mensagem enviada tiver 'download ' altera a conexão para UDP
-        if (strncmp(message, "download ", 9) == 0) { 
+        if (strncmp(message, "download ", 9) == 0) {
             closesocket(sock); // Fecha o socket atual
             sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); //conecta UDP e muda a flag
             useUDP = 1;
@@ -91,7 +91,7 @@ int main() {
                 }
 
                 fwrite(server_reply, 1, bytes_received, file);
-            }    
+            }
 
             fclose(file);
         } else {
