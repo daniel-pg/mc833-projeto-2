@@ -94,7 +94,7 @@ static void _send_command_mainloop(int sockfd_tcp, int sockfd_udp, struct addrin
             return;
         }
 
-        if (0 == strcmp(message, "download")) {
+        if (strncmp(message, "download ", 9) == 0) {
             // Send download command using UDP
             if (-1 == send(sockfd_udp, message, strlen(message), 0)) {
                 perror("Send failed");
@@ -107,10 +107,9 @@ static void _send_command_mainloop(int sockfd_tcp, int sockfd_udp, struct addrin
                 break;
             }
 
-            int end_of_file_received = 0;
-            while (!end_of_file_received) {
+            while (true) {
                 memset(server_reply, 0, sizeof(server_reply));
-                int bytes_received = recvfrom(sockfd_udp, server_reply, sizeof(server_reply) - 1, 0, p_udp->ai_addr, &p_udp->ai_addrlen);
+                int bytes_received = recvfrom(sockfd_udp, server_reply, sizeof(server_reply), 0, p_udp->ai_addr, &p_udp->ai_addrlen);
                 if (bytes_received < 0) {
                     perror("recvfrom failed");
                     break;
@@ -119,13 +118,13 @@ static void _send_command_mainloop(int sockfd_tcp, int sockfd_udp, struct addrin
                 // Verificar se é uma mensagem de fim de arquivo
                 if (bytes_received == 0 || strcmp(server_reply, "END OF FILE") == 0) {
                     puts("File received successfully.");
-                    end_of_file_received = 1;
-                    continue;
+                    break;
                 }
 
                 fwrite(server_reply, 1, bytes_received, file);
             }
 
+            fclose(file);
         } else {
             // Send message
             if (-1 == send(sockfd_tcp, message, strlen(message), 0)) {
