@@ -85,13 +85,13 @@ void send_file(const char* file_path, int udp_fd, struct sockaddr_in from, sockl
 
 static int callback(void* data, int argc, char** argv, char** azColName) {
     struct ResponseBuffer* resp = (struct ResponseBuffer*)data;
-    
+
     for (int i = 0; i < argc; i++) {
         const char* column = azColName[i];
         const char* value = argv[i] ? argv[i] : "NULL";
         // Calcula o tamanho necessário para a string incluindo o terminador nulo
         size_t needed = snprintf(NULL, 0, "%s = %s\n", column, value) + 1;
-        
+
         if (resp->length + needed < resp->bufferSize) {
             // Formata e adiciona a string ao buffer
             snprintf(resp->buffer + resp->length, needed, "%s = %s\n", column, value);
@@ -127,7 +127,7 @@ void listMusic(int sock, const char* language, const char* year, const char* gen
 
     char condition[256] = "";
     int rc;
-    
+
     // Adiciona condições à consulta baseada nos parâmetros fornecidos
     if (language && strlen(language) > 0) {
         snprintf(condition, sizeof(condition), " AND language = '%s'", language);
@@ -145,12 +145,12 @@ void listMusic(int sock, const char* language, const char* year, const char* gen
         snprintf(condition, sizeof(condition), " AND id = %s", id);
         strcat(sql, condition);
     }
-    
+
     // Se todos os parâmetros são NULL ou "", lista todas as informações de todas as músicas
     if (!(language || year || genre || id)) {
         strcpy(sql, "SELECT * FROM music");
     }
-    
+
     char response[MAX_RESPONSE_SIZE]; // Define um tamanho apropriado para seu caso
     struct ResponseBuffer resp = {response, MAX_RESPONSE_SIZE, 0};
 
@@ -279,7 +279,7 @@ void handleClient(int sock) {
         if (command != NULL) {
             char *response = "Comando não encontrado.";
             //determina o comando que foi enviado
-            if (strcmp(command, "addmusic") == 0) { //adicionar musica 
+            if (strcmp(command, "addmusic") == 0) { //adicionar musica
                 Music newMusic;
                 strncpy(newMusic.title, strtok_r(NULL, "|", &saveptr), sizeof(newMusic.title) - 1);
                 strncpy(newMusic.artist, strtok_r(NULL, "|", &saveptr), sizeof(newMusic.artist) - 1);
@@ -319,7 +319,7 @@ void handleClient(int sock) {
             //envia a mensagem de resposta ao cliente
             send(sock, response, strlen(response), 0);
         }
-        
+
         // Limpa a mensagem buffer novamente
         memset(client_message, 0, BUFFER_SIZE);
     }
@@ -435,18 +435,14 @@ int main() {
                 char id[512];
                 char file_path[1024];
                 char *error_msg = "File not found";
-                sendto(udp_fd, error_msg, strlen(error_msg), 0, (struct sockaddr *)&from, from_len);
                 // Analisa o buffer para extrair o comando e o id
                 if (sscanf(buffer, "%s %s", command, id) == 2) {
                     if (strcmp(command, "download") == 0) {
-                        if (strcmp(command, "download") == 0) {
-                            if (get_file_path(id, file_path) == 0) {
-                                send_file(file_path, udp_fd, from, from_len);
-                                sendto(udp_fd, "END OF FILE", strlen("END OF FILE"), 0, (struct sockaddr *)&from, from_len);
-                            } else {
-                                char *error_msg = "File not found";
-                                sendto(udp_fd, error_msg, strlen(error_msg), 0, (struct sockaddr *)&from, from_len);
-                            }
+                        if (get_file_path(id, file_path) == 0) {
+                            send_file(file_path, udp_fd, from, from_len);
+                            sendto(udp_fd, "END OF FILE", strlen("END OF FILE"), 0, (struct sockaddr *)&from, from_len);
+                        } else {
+                            sendto(udp_fd, error_msg, strlen(error_msg), 0, (struct sockaddr *)&from, from_len);
                         }
                     }
                 } else {
